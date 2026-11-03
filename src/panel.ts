@@ -119,7 +119,7 @@ function paintCalc() {
   for (const key of keys) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = key === "sqrt(" ? "\u221a" : key;
+    button.textContent = key === "sqrt(" ? "√" : key;
     button.addEventListener("click", () => {
       if (key === "C") expr = "";
       else expr += key;
