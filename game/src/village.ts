@@ -5,8 +5,9 @@ import { FISH_PALETTE, FISH_ROWS, WorldPainter, drawSkyAndHills, makeSprite } fr
 import { DAY_LENGTH, NIGHT_AT, SpecialistId, NpcId, state } from "./state";
 import { FISH_LINES, FRIEND_HELLO, FRIEND_TELLS, NPC_LINES, NPC_NAMES, SPECIALIST_TELLS } from "./story";
 
-const PW = 20; // ширина героя (коллизия)
-const PH = 30; // высота героя (коллизия)
+const SCALE = 2; // увеличение спрайтов героя и жителей
+const PW = 24; // ширина героя (коллизия)
+const PH = 56; // высота героя (коллизия)
 const REACH = 4 * TS; // радиус, в котором можно копать и ставить блоки
 const TALK_DIST = 64;
 const BOSS_HITS = 8;
@@ -91,7 +92,7 @@ export class Village extends Phaser.Scene {
     const home = HOUSES.home;
     this.px = (home + 2) * TS;
     this.py = surfaceAt(home) * TS - PH;
-    this.player = this.add.image(this.px + PW / 2, this.py + PH, "hero").setOrigin(0.5, 1).setDepth(10);
+    this.player = this.add.image(this.px + PW / 2, this.py + PH, "hero").setOrigin(0.5, 1).setScale(SCALE).setDepth(10);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
 
     // Жители: специалисты и друг
@@ -104,7 +105,7 @@ export class Village extends Phaser.Scene {
     for (const s of specs) {
       const minX = (s.house + 7) * TS;
       const maxX = (s.house + 14) * TS;
-      const body = this.add.image(minX + PW / 2, 0, "npc_" + s.id).setOrigin(0.5, 1).setDepth(9);
+      const body = this.add.image(minX + PW / 2, 0, "npc_" + s.id).setOrigin(0.5, 1).setScale(SCALE).setDepth(9);
       const label = this.add
         .text(0, 0, NPC_NAMES[s.id], { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" })
         .setOrigin(0.5, 1)
