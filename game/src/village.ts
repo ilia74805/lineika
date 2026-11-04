@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { Cards } from "./ui";
-import { AIR, DIRT, HOUSES, RUINS_X, STONE, TS, Tiles, WOOD, WORLD_H, WORLD_W, generate, idx, isSolid, surfaceAt, topSolid } from "./world";
+import { AIR, HOUSES, RUINS_X, TS, Tiles, WORLD_H, WORLD_W, generate, idx, isSolid, surfaceAt, topSolid } from "./world";
+import { BOSS_PALETTE, BOSS_ROWS, FISH_PALETTE, FISH_ROWS, HUMAN_PALETTES, HUMAN_ROWS, WorldPainter, drawSkyAndHills, makeSprite } from "./art";
 import { DAY_LENGTH, NIGHT_AT, SpecialistId, NpcId, state } from "./state";
 import { FISH_LINES, FRIEND_HELLO, FRIEND_TELLS, NPC_LINES, NPC_NAMES, SPECIALIST_TELLS } from "./story";
 
@@ -9,7 +10,6 @@ const PH = 20; // высота героя
 const REACH = 4 * TS; // радиус, в котором можно копать и ставить блоки
 const TALK_DIST = 48;
 const BOSS_HITS = 8;
-const COLORS: Record<number, number> = { [DIRT]: 0x6b4f2a, [STONE]: 0x6e6e76, [WOOD]: 0x9a6a3a };
 
 type Npc = {
   id: NpcId;
@@ -17,15 +17,16 @@ type Npc = {
   dir: number;
   minX: number;
   maxX: number;
-  body: Phaser.GameObjects.Rectangle;
+  body: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
   gone: boolean;
 };
 
 export class Village extends Phaser.Scene {
   private tiles!: Tiles;
-  private layer!: Phaser.GameObjects.Graphics;
-  private player!: Phaser.GameObjects.Rectangle;
+  private painter!: WorldPainter;
+  private night!: Phaser.GameObjects.Rectangle;
+  private player!: Phaser.GameObjects.Image;
   private px = 0;
   private py = 0;
   private vx = 0;
@@ -33,10 +34,10 @@ export class Village extends Phaser.Scene {
   private onGround = false;
   private dirt = 20;
   private npcs: Npc[] = [];
-  private fish!: Phaser.GameObjects.Rectangle;
+  private fish!: Phaser.GameObjects.Image;
   private fishX = 0;
   private fishY = 0;
-  private boss?: Phaser.GameObjects.Rectangle;
+  private boss?: Phaser.GameObjects.Image;
   private bossHits = 0;
   private cards!: Cards;
   private hint!: Phaser.GameObjects.Text;
@@ -77,8 +78,8 @@ export class Village extends Phaser.Scene {
     this.tiles = generate();
     this.cameras.main.setBackgroundColor("#8fc7ff");
     this.cameras.main.setBounds(0, 0, WORLD_W * TS, WORLD_H * TS);
-    this.layer = this.add.graphics();
-    this.drawTiles();
+    drawSkyAndHills(this);
+    this.painter = new WorldPainter(this, this.tiles);
 
     // Ландшафт и руины: метка на карте, которая видна всегда
     const ruinsTop = topSolid(this.tiles, RUINS_X + 2) * TS;
@@ -90,20 +91,22 @@ export class Village extends Phaser.Scene {
     const home = HOUSES.home;
     this.px = (home + 2) * TS;
     this.py = surfaceAt(home) * TS - PH;
-    this.player = this.add.rectangle(this.px, this.py, PW, PH, 0xf2c14e).setOrigin(0, 0).setDepth(10);
+    makeSprite(this, "player", HUMAN_ROWS, HUMAN_PALETTES["player"]!);
+    this.player = this.add.image(this.px, this.py, "player").setOrigin(0, 0).setDepth(10);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
 
     // Жители: специалисты и друг
-    const specs: { id: NpcId; house: number; color: number }[] = [
-      { id: "jeweler", house: HOUSES.jeweler, color: 0xd6a8ff },
-      { id: "mathematician", house: HOUSES.mathematician, color: 0x8ad0ff },
-      { id: "gardener", house: HOUSES.gardener, color: 0x8fd17a },
-      { id: "friend", house: HOUSES.friend, color: 0xff8a7a },
+    const specs: { id: NpcId; house: number }[] = [
+      { id: "jeweler", house: HOUSES.jeweler },
+      { id: "mathematician", house: HOUSES.mathematician },
+      { id: "gardener", house: HOUSES.gardener },
+      { id: "friend", house: HOUSES.friend },
     ];
     for (const s of specs) {
       const minX = (s.house + 7) * TS;
       const maxX = (s.house + 14) * TS;
-      const body = this.add.rectangle(minX, 0, PW, PH, s.color).setOrigin(0, 0).setDepth(9);
+      makeSprite(this, "npc_" + s.id, HUMAN_ROWS, HUMAN_PALETTES[s.id]!);
+      const body = this.add.image(minX, 0, "npc_" + s.id).setOrigin(0, 0).setDepth(9);
       const label = this.add
         .text(0, 0, NPC_NAMES[s.id], { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" })
         .setOrigin(0.5, 1)
@@ -119,11 +122,13 @@ export class Village extends Phaser.Scene {
     // Рыбка-поддержка в доме
     this.fishX = (home + 4) * TS;
     this.fishY = surfaceAt(home) * TS - 8;
-    this.fish = this.add.rectangle(this.fishX, this.fishY, 12, 8, 0xffa34d).setOrigin(0, 0).setDepth(9);
+    makeSprite(this, "fish", FISH_ROWS, FISH_PALETTE);
+    this.fish = this.add.image(this.fishX, this.fishY, "fish").setOrigin(0, 0).setDepth(9);
     this.add.text(this.fishX - 4, this.fishY - 12, "Рыбка", { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" }).setDepth(11);
 
     // Интерфейс (не двигается вместе с камерой)
-    this.veil = this.add.rectangle(480, 270, 960, 540, 0x000000, 0).setScrollFactor(0).setDepth(200);
+    this.night = this.add.rectangle(0, 0, 960, 540, 0x0b1230, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(60).setAlpha(0);
+    this.veil = this.add.rectangle(480, 270, 960, 540, 0x000000, 1).setScrollFactor(0).setDepth(200).setAlpha(0);
     this.hint = this.add.text(10, 8, "", { fontFamily: "monospace", fontSize: "12px", color: "#ffffff", backgroundColor: "#00000088" }).setScrollFactor(0).setDepth(50);
     this.dayLabel = this.add.text(950, 8, "", { fontFamily: "monospace", fontSize: "12px", color: "#ffffff", backgroundColor: "#00000088" }).setOrigin(1, 0).setScrollFactor(0).setDepth(50);
     this.cards = new Cards(this);
@@ -158,18 +163,6 @@ export class Village extends Phaser.Scene {
   }
 
   // ---------- мир и движение ----------
-
-  private drawTiles(): void {
-    this.layer.clear();
-    for (let y = 0; y < WORLD_H; y++) {
-      for (let x = 0; x < WORLD_W; x++) {
-        const t = this.tiles[idx(x, y)]!;
-        if (t === AIR) continue;
-        this.layer.fillStyle(COLORS[t] ?? 0xffffff);
-        this.layer.fillRect(x * TS, y * TS, TS, TS);
-      }
-    }
-  }
 
   private collides(x: number, y: number): boolean {
     const x0 = Math.floor(x / TS);
@@ -375,7 +368,7 @@ export class Village extends Phaser.Scene {
     const wy = p.worldY;
 
     if (p.leftButtonDown()) {
-      if (this.boss && Math.hypot(wx - this.boss.x, wy - this.boss.y) < 24) {
+      if (this.boss && Math.hypot(wx - (this.boss.x + 11), wy - (this.boss.y + 12)) < 24) {
         this.bossHits++;
         this.updateHint();
         if (this.bossHits >= BOSS_HITS) this.defeatBoss();
@@ -386,7 +379,7 @@ export class Village extends Phaser.Scene {
       if (this.inReach(tx, ty) && isSolid(this.tiles, tx, ty) && ty >= 0 && ty < WORLD_H && tx >= 0 && tx < WORLD_W) {
         this.tiles[idx(tx, ty)] = AIR;
         this.dirt++;
-        this.drawTiles();
+        this.painter.refreshAround(tx, ty);
         this.updateHint();
       }
     } else if (p.rightButtonDown()) {
@@ -398,9 +391,9 @@ export class Village extends Phaser.Scene {
       const tileX = tx * TS;
       const tileY = ty * TS;
       if (tileX < this.px + PW && tileX + TS > this.px && tileY < this.py + PH && tileY + TS > this.py) return;
-      this.tiles[idx(tx, ty)] = DIRT;
+      this.tiles[idx(tx, ty)] = 1;
       this.dirt--;
-      this.drawTiles();
+      this.painter.refreshAround(tx, ty);
       this.updateHint();
     }
   }
@@ -424,6 +417,9 @@ export class Village extends Phaser.Scene {
     const night = state.dayTime >= NIGHT_AT;
     if (night && !this.lastNight) this.nightStarts();
     this.lastNight = night;
+    // затемнение: плавно к вечеру, полностью ночью
+    const dusk = Math.min(1, Math.max(0, (state.dayTime - (NIGHT_AT - 8)) / 8));
+    this.night.setAlpha(dusk * 0.55);
   }
 
   private nightStarts(): void {
@@ -442,7 +438,8 @@ export class Village extends Phaser.Scene {
   private spawnBoss(): void {
     const tx = RUINS_X + 8;
     const top = topSolid(this.tiles, tx) * TS;
-    this.boss = this.add.rectangle(tx * TS, top - 24, 22, 24, 0x7a3fb0).setOrigin(0, 0).setDepth(9);
+    makeSprite(this, "boss", BOSS_ROWS, BOSS_PALETTE);
+    this.boss = this.add.image(tx * TS, top - 24, "boss").setOrigin(0, 0).setScale(2).setDepth(9);
     this.add.text(tx * TS, top - 36, "Чудовище", { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" }).setDepth(11);
     this.cards.show(["Чудовище из легенды. Оно стоит неподвижно и смотрит на тебя."]);
   }
