@@ -4,8 +4,16 @@
   "short_name": "Линейка",
   "version": "1.0.0",
   "description": "Боковая панель для школьных задач: локальная мини-модель, калькулятор, конспекты 1–11 и курсор, который вписывает ответ.",
-  "permissions": ["sidePanel", "storage"],
-  "host_permissions": ["http://*/*", "https://*/*"],
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "http://localhost:11434/*",
+    "http://127.0.0.1:11434/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -17,8 +25,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

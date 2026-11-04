@@ -74,19 +74,91 @@ function paint() {
   else paintCursor();
 }
 
+const MODEL_URL_KEY = "lineika.modelUrl";
+const MODEL_NAME_KEY = "lineika.model";
+const DEFAULT_URL = "http://localhost:11434";
+const DEFAULT_MODEL = "qwen2.5:3b";
+
+// Настройки храним в браузере панели: это удобство, а не данные для Claude.
+function readSetting(key: string, fallback: string): string {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSetting(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // без хранилища просто не запомним
+  }
+}
+
+async function askModel(question: string): Promise<string> {
+  const base = readSetting(MODEL_URL_KEY, DEFAULT_URL).replace(/\/$/, "");
+  const model = readSetting(MODEL_NAME_KEY, DEFAULT_MODEL);
+  let res: Response;
+  try {
+    res = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Ты помогаешь школьнику. Отвечай по-русски. Сначала кратко перескажи условие, затем реши по шагам и объясни каждый шаг. В последней строке напиши «Ответ: ...».",
+          },
+          { role: "user", content: question },
+        ],
+      }),
+    });
+  } catch {
+    throw new Error(`Нет связи с Ollama по адресу ${base}. Запусти Ollama и проверь настройку в блоке «Модель».`);
+  }
+  if (!res.ok) {
+    throw new Error(`Ollama ответила ${res.status}. Проверь, что модель «${model}» скачана: ollama pull ${model}`);
+  }
+  const data = (await res.json()) as { message?: { content?: string } };
+  return data.message?.content?.trim() || "Модель ничего не вернула.";
+}
+
+let modelBusy = false;
+
 function paintChat() {
   h(`
     <label>Задача или тема
       <textarea id="q">${escape(chatQ)}</textarea>
     </label>
-    <div>
+    <div class="row">
       <button id="ask" type="button">Решить</button>
+      <button id="askm" type="button" ${modelBusy ? "disabled" : ""}>Спросить модель</button>
     </div>
-    <article id="out">${chatHtml || '<p>Считает на этом компьютере, без облака. Уравнения любой степени и системы (x; y; z), доли, проценты, геометрия, физика, химия, орфограммы. Остальное ищет в конспектах.</p>'}</article>
+    <article id="out">${chatHtml || '<p>Решает правилами на этом компьютере, без облака: уравнения любой степени и системы, доли, проценты, геометрия, физика, химия, орфограммы. Остальное ищет в конспектах. Для сложных условий — кнопка «Спросить модель».</p>'}</article>
+    <details>
+      <summary>Модель</summary>
+      <label>Адрес Ollama
+        <input id="murl" type="text" value="${escape(readSetting(MODEL_URL_KEY, DEFAULT_URL))}" />
+      </label>
+      <label>Модель
+        <input id="mname" type="text" value="${escape(readSetting(MODEL_NAME_KEY, DEFAULT_MODEL))}" />
+      </label>
+      <p>Скачать и поставить Ollama: <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a>. Потом в терминале: <code>ollama pull ${escape(readSetting(MODEL_NAME_KEY, DEFAULT_MODEL))}</code>. Если модель не отвечает из расширения, запусти Ollama с переменной <code>OLLAMA_ORIGINS=chrome-extension://*</code>.</p>
+    </details>
   `);
   const q = document.querySelector("#q") as HTMLTextAreaElement;
   q.addEventListener("input", () => {
     chatQ = q.value;
+  });
+  (document.querySelector("#murl") as HTMLInputElement).addEventListener("change", (event) => {
+    writeSetting(MODEL_URL_KEY, (event.target as HTMLInputElement).value.trim() || DEFAULT_URL);
+  });
+  (document.querySelector("#mname") as HTMLInputElement).addEventListener("change", (event) => {
+    writeSetting(MODEL_NAME_KEY, (event.target as HTMLInputElement).value.trim() || DEFAULT_MODEL);
   });
   document.querySelector("#ask")?.addEventListener("click", () => {
     const solved = solve(chatQ, LESSONS);
@@ -97,6 +169,26 @@ function paintChat() {
       chatHtml += `<p>${ranked.lesson.grade} кл. · ${escape(ranked.lesson.topic)}</p><p>${escape(ranked.lesson.summary)}</p>`;
     }
     answer = solved.answer;
+    paint();
+  });
+  document.querySelector("#askm")?.addEventListener("click", async () => {
+    const question = chatQ.trim();
+    if (!question) {
+      chatHtml = "<p>Сначала напиши задачу.</p>";
+      paint();
+      return;
+    }
+    modelBusy = true;
+    chatHtml = "<p>Модель думает…</p>";
+    paint();
+    try {
+      const text = await askModel(question);
+      chatHtml = `<p>${escape(text).replace(/\n/g, "<br>")}</p>`;
+      answer = (text.match(/Ответ:\s*(.+)$/m)?.[1] ?? "").trim();
+    } catch (err) {
+      chatHtml = `<p>${escape(err instanceof Error ? err.message : "Ошибка модели")}</p>`;
+    }
+    modelBusy = false;
     paint();
   });
 }
