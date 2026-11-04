@@ -44,14 +44,20 @@ function nearby(el: HTMLElement) {
   }
   const prev = el.previousElementSibling;
   if (prev?.textContent) bits.push(prev.textContent);
-  const parent = el.parentElement;
-  if (parent && parent !== document.body && parent !== document.documentElement) {
-    const clone = parent.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll("input, textarea, button, select, #lineika-cursor").forEach((node) => node.remove());
+  // Поднимаемся по предкам: задача может быть в соседней ячейке таблицы или в
+  // блоке выше. Берём ближайший блок, где есть текст без полей и кнопок.
+  let node: HTMLElement | null = el.parentElement;
+  for (let level = 0; level < 5 && node && node !== document.body && node !== document.documentElement; level++) {
+    const clone = node.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("input, textarea, button, select, script, style, #lineika-cursor").forEach((n) => n.remove());
     const text = (clone.textContent || "").replace(/\s+/g, " ").trim();
-    if (text && text.length < 280) bits.push(text);
+    if (text.length >= 8 && text.length < 600) {
+      bits.push(text);
+      break;
+    }
+    node = node.parentElement;
   }
-  return bits.join(" ").replace(/\s+/g, " ").trim().slice(0, 360);
+  return [...new Set(bits)].join(" ").replace(/\s+/g, " ").trim().slice(0, 600);
 }
 
 function isAnswerField(el: HTMLElement) {
@@ -88,30 +94,13 @@ function cursor() {
   el = document.createElement("div");
   el.id = "lineika-cursor";
   el.innerHTML =
-    '<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M3 2 L3 18 L7.2 13.6 L10.2 20 L13 18.8 L10 12.6 L16.5 12.2 Z" fill="#1c1916"/></svg><span></span>';
-  const style = el.style;
-  style.position = "fixed";
-  style.left = "0";
-  style.top = "0";
-  style.zIndex = "2147483647";
-  style.pointerEvents = "none";
-  style.display = "flex";
-  style.alignItems = "flex-start";
-  style.gap = "6px";
-  style.transform = "translate(24px, 24px)";
-  const tag = el.querySelector("span");
-  if (tag) {
-    tag.style.font = "12px/1.3 Segoe UI, sans-serif";
-    tag.style.background = "#fbf8f3";
-    tag.style.color = "#1c1916";
-    tag.style.border = "1px solid #1c1916";
-    tag.style.borderRadius = "999px";
-    tag.style.padding = "2px 8px";
-    tag.style.maxWidth = "180px";
-    tag.style.whiteSpace = "nowrap";
-    tag.style.overflow = "hidden";
-    tag.style.textOverflow = "ellipsis";
-  }
+    '<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M3 2 L3 18 L7.2 13.6 L10.2 20 L13 18.8 L10 12.6 L16.5 12.2 Z"/></svg><span></span>';
+  el.style.position = "fixed";
+  el.style.left = "0";
+  el.style.top = "0";
+  el.style.pointerEvents = "none";
+  el.style.zIndex = "2147483647";
+  el.style.transform = "translate(24px, 24px)";
   document.documentElement.appendChild(el);
   return el;
 }
