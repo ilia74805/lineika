@@ -4,9 +4,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "selftest": "esbuild src/engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/selftest.mjs --log-level=warning && node node_modules/.cache/selftest.mjs --check",
     "build": "node scripts/build.mjs"
   },
   "devDependencies": {
-    "esbuild": "0.25.0"
+    "esbuild": "0.25.0",
+    "typescript": "5.6.3",
+    "@types/chrome": "0.0.287"
   }
 }

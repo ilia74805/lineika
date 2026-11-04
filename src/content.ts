@@ -51,7 +51,7 @@ function nearby(el: HTMLElement) {
     const text = (clone.textContent || "").replace(/\s+/g, " ").trim();
     if (text && text.length < 280) bits.push(text);
   }
-  return bits.join(" ").replace(/\s+/g, " ").trim().slice(0, 360);
+  return [...new Set(bits)].join(" ").replace(/\s+/g, " ").trim().slice(0, 360);
 }
 
 function isAnswerField(el: HTMLElement) {

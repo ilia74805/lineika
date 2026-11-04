@@ -599,7 +599,7 @@ export function solve(question: string, lessons: Lesson[]): Solution {
     }
   }
 
-  if (/(?:^|[^а-яёa-z])нод(?:[^а-яёa-z]|$)наибольш(ий|его)\s+общ(ий|его)\s+делител/i.test(q)) {
+  if (/(?:^|[^а-яёa-z])нод(?:[^а-яёa-z]|$)/i.test(q) || /наибольш(ий|его)\s+общ(ий|его)\s+делител/i.test(q)) {
     const ns = nums(q).map((n) => Math.round(n));
     if (ns.length >= 2 && ns.every((n) => n > 0)) {
       const gcd = (x: number, y: number): number => (y ? gcd(y, x % y) : x);
@@ -608,7 +608,7 @@ export function solve(question: string, lessons: Lesson[]): Solution {
     }
   }
 
-  if (/(?:^|[^а-яёa-z])нок(?:[^а-яёa-z]|$)наименьш(ее|его)\s+общ(ее|его)\s+кратн/i.test(q)) {
+  if (/(?:^|[^а-яёa-z])нок(?:[^а-яёa-z]|$)/i.test(q) || /наименьш(ее|его)\s+общ(ее|его)\s+кратн/i.test(q)) {
     const ns = nums(q).map((n) => Math.round(n));
     if (ns.length >= 2 && ns.every((n) => n > 0)) {
       const gcd = (x: number, y: number): number => (y ? gcd(y, x % y) : x);
@@ -752,7 +752,8 @@ export function solve(question: string, lessons: Lesson[]): Solution {
   ]);
 }
 
-const isCheck = typeof process !== "undefined" && process.argv?.includes("--check");
+const proc = (globalThis as { process?: { argv?: string[]; exit?: (code: number) => void } }).process;
+const isCheck = typeof proc !== "undefined" && !!proc.argv?.includes("--check");
 if (isCheck) {
   const samples = [
     ["48 + 27", "75"],
@@ -790,5 +791,5 @@ if (isCheck) {
     console.log("FAIL keys", keys);
   }
   console.log(bad ? `failed ${bad}` : "all ok");
-  process.exit(bad ? 1 : 0);
+  proc?.exit?.(bad ? 1 : 0);
 }
