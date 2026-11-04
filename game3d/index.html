@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Прототип 3D</title>
+    <style>
+      html, body { margin: 0; background: #000; overflow: hidden; font-family: monospace; }
+      #wrap { position: relative; width: 960px; height: 540px; margin: 0 auto; }
+      #view { width: 960px; height: 540px; image-rendering: pixelated; display: block; }
+      #hint, #day { position: absolute; color: #fff; background: #00000099; padding: 2px 6px; font-size: 12px; white-space: pre; }
+      #hint { left: 8px; top: 8px; }
+      #day { right: 8px; top: 8px; }
+      #cards { display: none; position: absolute; left: 20px; right: 20px; bottom: 16px; padding: 16px; background: #000000dd; color: #f2efe6; font-size: 18px; white-space: pre-wrap; }
+      #veil { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+      #diary { display: none; position: absolute; left: 20px; right: 20px; top: 20px; padding: 16px; background: #000000ee; color: #f2efe6; }
+    </style>
+  </head>
+  <body>
+    <div id="wrap">
+      <canvas id="view" width="480" height="270"></canvas>
+      <div id="hint"></div>
+      <div id="day"></div>
+      <div id="veil"></div>
+      <div id="cards"></div>
+    </div>
+    <script src="game.js"></script>
+  </body>
+</html>
