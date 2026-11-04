@@ -82,7 +82,7 @@ function paintChat() {
     <div>
       <button id="ask" type="button">Решить</button>
     </div>
-    <article id="out">${chatHtml || '<p>Считает на этом компьютере, без облака. Уравнения до 2-й степени, доли, проценты, геометрия, физика, химия, орфограммы. Остальное ищет в конспектах.</p>'}</article>
+    <article id="out">${chatHtml || '<p>Считает на этом компьютере, без облака. Уравнения любой степени и системы (x; y; z), доли, проценты, геометрия, физика, химия, орфограммы. Остальное ищет в конспектах.</p>'}</article>
   `);
   const q = document.querySelector("#q") as HTMLTextAreaElement;
   q.addEventListener("input", () => {

@@ -512,22 +512,275 @@ export function rankLessons(q: string, lessons: Lesson[]): { lesson: Lesson; sco
     .sort((a, b) => b.score - a.score || Number(b.lesson.deep) - Number(a.lesson.deep));
 }
 
+function solveLinearSystem(A: number[][], b: number[]): number[] | null {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]!]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(M[r]![col]!) > Math.abs(M[piv]![col]!)) piv = r;
+    }
+    if (Math.abs(M[piv]![col]!) < 1e-12) return null;
+    [M[col], M[piv]] = [M[piv]!, M[col]!];
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const factor = M[r]![col]! / M[col]![col]!;
+      for (let c = col; c <= n; c++) M[r]![c] = M[r]![c]! - factor * M[col]![c]!;
+    }
+  }
+  return M.map((row, i) => row[n]! / row[i]!);
+}
+
+function roundClean(c: number): number {
+  return Math.abs(c) < 1e-9 ? 0 : Math.round(c * 1e9) / 1e9;
+}
+
+// Многочлен по значениям функции: подбираем коэффициенты до 6-й степени
+// и проверяем на точках, которых не было при подборе. Не многочлен — вернёт null.
+function polyFit(f: (x: number) => number): number[] | null {
+  const D = 6;
+  const xs = Array.from({ length: D + 1 }, (_, k) => k - 2);
+  const ys = xs.map(f);
+  if (!ys.every(Number.isFinite)) return null;
+  const A = xs.map((x) => Array.from({ length: D + 1 }, (_, j) => x ** j));
+  const coef = solveLinearSystem(A, ys);
+  if (!coef) return null;
+  // Проверяем далеко от точек подбора: почти линейная функция (например, sin в градусах)
+  // на малом отрезке совпадает с многочленом, но расходится за его пределами.
+  for (const x of [5.5, -3.25, 37, -61, 120]) {
+    const y = f(x);
+    if (!Number.isFinite(y)) return null;
+    const pred = coef.reduce((s, c, j) => s + c * x ** j, 0);
+    if (Math.abs(pred - y) > 1e-7 * (1 + Math.abs(y))) return null;
+  }
+  const cleaned = coef.map(roundClean);
+  while (cleaned.length > 1 && cleaned[cleaned.length - 1] === 0) cleaned.pop();
+  return cleaned;
+}
+
+function evalPoly(p: number[], x: number): number {
+  let s = 0;
+  for (let i = p.length - 1; i >= 0; i--) s = s * x + p[i]!;
+  return s;
+}
+
+// Все действительные корни многочлена. Между соседними критическими точками
+// многочлен монотонен, поэтому там не больше одного корня — ищем его делением пополам.
+function realRoots(p: number[]): number[] {
+  const deg = p.length - 1;
+  if (deg < 1) return [];
+  if (deg === 1) return [-p[0]! / p[1]!];
+  const deriv = p.slice(1).map((c, i) => c * (i + 1));
+  const crit = realRoots(deriv).sort((a, b) => a - b);
+  const lead = Math.abs(p[deg]!);
+  const bound = 1 + Math.max(...p.slice(0, deg).map((c) => Math.abs(c))) / lead;
+  const pts = [-bound, ...crit, bound];
+  const roots: number[] = [];
+  const add = (r: number) => {
+    if (!roots.some((q) => Math.abs(q - r) < 1e-7)) roots.push(r);
+  };
+  for (const a of pts) if (Math.abs(evalPoly(p, a)) < 1e-9) add(a);
+  for (let i = 0; i + 1 < pts.length; i++) {
+    let lo = pts[i]!;
+    let hi = pts[i + 1]!;
+    let flo = evalPoly(p, lo);
+    const fhi = evalPoly(p, hi);
+    if (flo * fhi < 0) {
+      for (let k = 0; k < 200; k++) {
+        const mid = (lo + hi) / 2;
+        const fm = evalPoly(p, mid);
+        if (fm * flo <= 0) hi = mid;
+        else {
+          lo = mid;
+          flo = fm;
+        }
+      }
+      add((lo + hi) / 2);
+    }
+  }
+  return roots.sort((a, b) => a - b);
+}
+
+// Численный поиск корней для любой функции на отрезке [-100; 100].
+// Ищем смену знака, затем делением пополам; разрывы (например, tg) отсеиваем.
+function scanRoots(f: (x: number) => number): number[] {
+  const roots: number[] = [];
+  const add = (r: number) => {
+    if (!roots.some((q) => Math.abs(q - r) < 1e-5)) roots.push(r);
+  };
+  const safe = (x: number) => {
+    const y = f(x);
+    return Number.isFinite(y) ? y : NaN;
+  };
+  let px = -100;
+  let py = safe(px);
+  for (let k = 1; k <= 20000 && roots.length < 10; k++) {
+    const x = -100 + k * 0.01;
+    const y = safe(x);
+    if (Number.isFinite(py) && Number.isFinite(y)) {
+      if (py === 0) add(px);
+      else if (py * y < 0) {
+        let lo = px;
+        let hi = x;
+        let flo = py;
+        for (let i = 0; i < 80; i++) {
+          const mid = (lo + hi) / 2;
+          const fm = safe(mid);
+          if (!Number.isFinite(fm)) break;
+          if (fm * flo <= 0) hi = mid;
+          else {
+            lo = mid;
+            flo = fm;
+          }
+        }
+        const r = (lo + hi) / 2;
+        if (Math.abs(safe(r)) < 1e-6) add(r);
+      }
+    }
+    px = x;
+    py = y;
+  }
+  return roots;
+}
+
+function polyText(p: number[]): string {
+  const sup = ["", "x", "x²", "x³", "x⁴", "x⁵", "x⁶"];
+  let s = "";
+  for (let i = p.length - 1; i >= 0; i--) {
+    const c = p[i]!;
+    if (c === 0) continue;
+    const abs = Math.abs(c);
+    const coef = abs === 1 && i > 0 ? "" : formatNum(abs);
+    const term = i === 0 ? coef : coef + sup[i];
+    if (s === "") s = (c < 0 ? "−" : "") + term;
+    else s += (c < 0 ? " − " : " + ") + term;
+  }
+  return s || "0";
+}
+
+function linText(row: number[], names: string[], rhs: number): string {
+  const terms = row
+    .map((c, j) => ({ c, n: names[j]! }))
+    .filter((t) => t.c !== 0)
+    .map((t, i) => {
+      const sign = t.c < 0 ? (i === 0 ? "−" : " − ") : i === 0 ? "" : " + ";
+      const abs = Math.abs(t.c);
+      return sign + (abs === 1 ? "" : formatNum(abs)) + t.n;
+    })
+    .join("");
+  return `${terms || "0"} = ${formatNum(rhs)}`;
+}
+
+function trySystem(parts: string[]): Solution | null {
+  const eqs = parts.map((p) => p.split("="));
+  if (eqs.some((e) => e.length !== 2)) return null;
+  const names = ["x", "y", "z"].filter((v) =>
+    parts.some((p) => new RegExp(`(^|[^a-zа-яё])${v}([^a-zа-яё]|$)`, "i").test(p)),
+  );
+  if (names.length !== eqs.length) {
+    return fail("Система", [`Уравнений ${eqs.length}, неизвестных ${names.length}. Нужно поровну: 2 уравнения с x и y, 3 — с x, y, z.`]);
+  }
+  const A: number[][] = [];
+  const b: number[] = [];
+  const shown: string[] = [];
+  for (const [l, r] of eqs) {
+    const diff = `(${l!.trim()})-(${r!.trim()})`;
+    const L = (vals: number[]) => {
+      const vars: Record<string, number> = {};
+      names.forEach((n, i) => (vars[n] = vals[i]!));
+      return evaluateExpr(diff, vars, true);
+    };
+    const zeros = names.map(() => 0);
+    let c0: number;
+    try {
+      c0 = L(zeros);
+    } catch {
+      return null;
+    }
+    const row = names.map((_, j) => roundClean(L(zeros.map((_, k) => (k === j ? 1 : 0))) - c0));
+    const probe = names.map((_, j) => j + 2);
+    const pred = c0 + row.reduce((s, c, j) => s + c * probe[j]!, 0);
+    if (Math.abs(L(probe) - pred) > 1e-7 * (1 + Math.abs(pred))) return null;
+    A.push(row);
+    b.push(roundClean(-c0));
+    shown.push(linText(row, names, roundClean(-c0)));
+  }
+  const sol = solveLinearSystem(A, b);
+  if (!sol) {
+    return done("Система", "нет единственного решения", [
+      ...shown.map((s) => `Уравнение: ${s}`),
+      "Определитель равен нулю: система несовместна или имеет бесконечно много решений.",
+    ]);
+  }
+  return done("Система", names.map((n, i) => `${n} = ${formatNum(roundClean(sol[i]!))}`).join(", "), [
+    ...shown.map((s) => `Уравнение: ${s}`),
+    "Решаю методом Гаусса: исключаю переменные по очереди.",
+    ...names.map((n, i) => `${n} = ${formatNum(roundClean(sol[i]!))}`),
+  ]);
+}
+
 function tryEquation(q: string): Solution | null {
   if (!q.includes("=")) return null;
-  const parts = q.split("=");
-  if (parts.length !== 2) return null;
-  const leftSrc = prepMath(parts[0]!);
-  const rightSrc = prepMath(parts[1]!);
-  if (!leftSrc || !rightSrc) return null;
-  if (!/[x]/.test(leftSrc + rightSrc)) return null;
-  if (!/^[\d.x+\-*/^()%!a-z]+$/i.test(leftSrc) || !/^[\d.x+\-*/^()%!a-z]+$/i.test(rightSrc)) {
-    return null;
+  const parts = q.split(";").map((s) => s.trim()).filter(Boolean);
+  if (parts.length >= 2) return trySystem(parts);
+  const sides = q.split("=");
+  if (sides.length !== 2) return null;
+  const left = sides[0]!.trim();
+  const right = sides[1]!.trim();
+  const L = prepMath(left);
+  const R = prepMath(right);
+  if (!L || !R) return null;
+  if (!/x/.test(L + R)) return null;
+  if (!/^[\d.x+\-*/^()%!a-z]+$/i.test(L) || !/^[\d.x+\-*/^()%!a-z]+$/i.test(R)) return null;
+
+  const diff = `(${left})-(${right})`;
+  const f = (x: number) => {
+    try {
+      return evaluateExpr(diff, { x }, true);
+    } catch {
+      return NaN;
+    }
+  };
+  const head = `Переношу всё влево: ${left} − (${right}) = 0.`;
+
+  const coef = polyFit(f);
+  if (coef) {
+    const deg = coef.length - 1;
+    const expanded = `Раскрываю скобки и привожу подобные: ${polyText(coef)} = 0.`;
+    if (deg === 0) {
+      const answer = Math.abs(coef[0]!) < 1e-9 ? "бесконечно много решений" : "нет решений";
+      return done("Уравнение", answer, [head, expanded, answer]);
+    }
+    if (deg <= 2) {
+      const r = polyAnswer(coef[2] ?? 0, coef[1] ?? 0, coef[0] ?? 0);
+      return done("Уравнение", r.answer, [head, expanded, ...r.steps]);
+    }
+    const roots = realRoots(coef);
+    const steps = [
+      head,
+      expanded,
+      `Степень ${deg}: формулы для неё в школе не проходят, корни ищу делением отрезка пополам.`,
+    ];
+    if (roots.length === 0) {
+      steps.push("Действительных корней нет.");
+      return done("Уравнение", "нет действительных корней", steps);
+    }
+    steps.push(`Действительные корни: ${roots.map(formatNum).join(", ")}.`);
+    return done("Уравнение", `x = ${roots.map(formatNum).join(", ")}`, steps);
   }
-  const left = fitPoly(leftSrc);
-  const right = fitPoly(rightSrc);
-  if (!left || !right) return null;
-  const solved = polyAnswer(left.a - right.a, left.b - right.b, left.c - right.c);
-  return done("Уравнение", solved.answer, ["Мини-модель сводит обе части к многочлену не выше 2-й степени.", ...solved.steps]);
+
+  const roots = scanRoots(f);
+  const steps = [
+    head,
+    "Уравнение не многочленное (функции или x в показателе). Ищу корни численно на отрезке [−100; 100].",
+    "Ответ приближённый: проверь его подстановкой.",
+  ];
+  if (roots.length === 0) {
+    steps.push("На этом отрезке корней не найдено.");
+    return done("Уравнение", "корней на [−100; 100] не найдено", steps);
+  }
+  const shownRoots = roots.map((r) => formatNum(Number(r.toFixed(4))));
+  return done("Уравнение", `x ≈ ${shownRoots.join(", ")}`, steps);
 }
 
 function tryArithmetic(q: string): Solution | null {
@@ -747,7 +1000,7 @@ export function solve(question: string, lessons: Lesson[]): Solution {
   }
 
   return fail("Не узнала", [
-    "Мини-модель считает школьные выражения, уравнения до 2-й степени, доли, проценты, НОД и НОК, площади, скорость, силу, закон Ома и молярную массу.",
+    "Мини-модель считает школьные выражения, уравнения (многочлены любой степени, системы линейных, численно — остальные), доли, проценты, НОД и НОК, площади, скорость, силу, закон Ома и молярную массу.",
     "По остальным урокам ищет конспект. Если тема не нашлась — попробуй переформулировать вопрос.",
   ]);
 }
@@ -762,6 +1015,10 @@ if (isCheck) {
     ["2x + 5 = 17", "x = 6"],
     ["2(x-3)=10", "x = 8"],
     ["x^2 - 5x + 6 = 0", "x = 2 и x = 3"],
+    ["x^3 - x = 0", "x = -1, 0, 1"],
+    ["x^4 - 5x^2 + 4 = 0", "x = -2, -1, 1, 2"],
+    ["x + y = 5; x - y = 1", "x = 3, y = 2"],
+    ["2^x = 8", "x ≈ 3"],
     ["площадь треугольника основание 8 высота 5", "20"],
     ["катеты 3 и 4, найти гипотенузу", "5"],
     ["скорость если путь 120 км и время 2 ч", "60 км/ч"],
