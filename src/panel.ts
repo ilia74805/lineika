@@ -5,13 +5,13 @@ type Tab = "chat" | "calc" | "books" | "cursor";
 type Field = { ref: string; context: string; value: string; empty: boolean };
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: "chat", label: "Чат" },
+  { id: "chat", label: "Решить" },
   { id: "calc", label: "Счёт" },
   { id: "books", label: "Уроки" },
   { id: "cursor", label: "Курсор" },
 ];
 
-let tab: Tab = "cursor";
+let tab: Tab = "chat";
 let expr = "";
 let angle: "deg" | "rad" = "deg";
 let grade = 7;
@@ -79,10 +79,10 @@ function paintChat() {
     <label>Задача или тема
       <textarea id="q">${escape(chatQ)}</textarea>
     </label>
-    <div class="row">
-      <button class="act primary" id="ask" type="button">Решить локально</button>
+    <div>
+      <button id="ask" type="button">Решить</button>
     </div>
-    <article class="card" id="out">${chatHtml || '<p class="muted">Считает на этом компьютере, без облака. Уравнения до 2-й степени, доли, проценты, геометрия, физика, химия, орфограммы. Остальное ищет в конспектах.</p>'}</article>
+    <article id="out">${chatHtml || '<p>Считает на этом компьютере, без облака. Уравнения до 2-й степени, доли, проценты, геометрия, физика, химия, орфограммы. Остальное ищет в конспектах.</p>'}</article>
   `);
   const q = document.querySelector("#q") as HTMLTextAreaElement;
   q.addEventListener("input", () => {
@@ -92,9 +92,9 @@ function paintChat() {
     const solved = solve(chatQ, LESSONS);
     const ranked = rankLessons(chatQ, LESSONS)[0];
     const steps = solved.steps.map((step) => escape(step)).join("\n");
-    chatHtml = `<h2>${escape(solved.ok ? solved.answer : solved.title)}</h2><p class="steps">${steps}</p>`;
+    chatHtml = `<h2>${escape(solved.ok ? solved.answer : solved.title)}</h2><p>${steps}</p>`;
     if (ranked) {
-      chatHtml += `<p class="muted">${ranked.lesson.grade} кл. · ${escape(ranked.lesson.topic)}</p><p class="lesson">${escape(ranked.lesson.summary)}</p>`;
+      chatHtml += `<p>${ranked.lesson.grade} кл. · ${escape(ranked.lesson.topic)}</p><p>${escape(ranked.lesson.summary)}</p>`;
     }
     answer = solved.answer;
     paint();
@@ -104,15 +104,15 @@ function paintChat() {
 function paintCalc() {
   const keys = ["7", "8", "9", "/", "4", "5", "6", "*", "1", "2", "3", "-", "0", ".", "^", "+", "(", ")", "sqrt(", "C"];
   h(`
-    <article class="card">
-      <p class="muted">${angle === "deg" ? "градусы" : "радианы"}</p>
-      <p class="screen" id="screen">${escape(expr || "0")}</p>
+    <article>
+      <p>${angle === "deg" ? "градусы" : "радианы"}</p>
+      <p id="screen">${escape(expr || "0")}</p>
     </article>
-    <div class="row">
-      <button class="act" id="ang" type="button">${angle === "deg" ? "Перейти в радианы" : "Перейти в градусы"}</button>
-      <button class="act primary" id="eq" type="button">=</button>
+    <div>
+      <button id="ang" type="button">${angle === "deg" ? "Перейти в радианы" : "Перейти в градусы"}</button>
+      <button id="eq" type="button">=</button>
     </div>
-    <div class="keys" id="keys"></div>
+    <div id="keys"></div>
   `);
   const screen = document.querySelector("#screen") as HTMLElement;
   const box = document.querySelector("#keys") as HTMLElement;
@@ -156,7 +156,7 @@ function paintBooks() {
     <label>Поиск по конспектам
       <input id="find" type="search" value="${escape(query)}" placeholder="фотосинтез, Ом, дробь" />
     </label>
-    <div class="row" id="subs"></div>
+    <div id="subs"></div>
     <div id="list"></div>
   `);
   (document.querySelector("#grade") as HTMLSelectElement).addEventListener("change", (event) => {
@@ -179,7 +179,6 @@ function paintBooks() {
     for (const name of subjects) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "act";
       button.textContent = name;
       if (name === subject) button.classList.add("primary");
       button.addEventListener("click", () => {
@@ -194,7 +193,6 @@ function paintBooks() {
   for (const lesson of found) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "hit";
     button.innerHTML = `<strong>${escape(lesson.topic)}</strong><small>${lesson.grade} кл. · ${escape(lesson.subject)}</small>`;
     button.addEventListener("click", () => {
       openId = openId === lesson.id ? "" : lesson.id;
@@ -203,8 +201,7 @@ function paintBooks() {
     list.appendChild(button);
     if (openId === lesson.id) {
       const card = document.createElement("article");
-      card.className = "card";
-      card.innerHTML = `<p class="lesson">${escape(lesson.summary)}</p><p class="steps">${lesson.rules.map(escape).join("\n")}</p><p class="muted">${escape(lesson.example)}</p>`;
+      card.innerHTML = `<p>${escape(lesson.summary)}</p><p>${lesson.rules.map(escape).join("\n")}</p><p>${escape(lesson.example)}</p>`;
       list.appendChild(card);
     }
   }
@@ -212,24 +209,23 @@ function paintBooks() {
 
 function paintCursor() {
   h(`
-    <p class="muted">Курсор едет по открытой вкладке и печатает в поля. Пустое поле берёт, только если рядом виден текст задачи.</p>
-    <div class="row">
-      <button class="act" id="snap" type="button">Снимок</button>
-      <button class="act primary" id="fill" type="button" ${busy ? "disabled" : ""}>Заполнить пустые</button>
-      <button class="act" id="stop" type="button">Стоп</button>
+    <p>Курсор едет по открытой вкладке и печатает в поля. Пустое поле берёт, только если рядом виден текст задачи.</p>
+    <div>
+      <button id="snap" type="button">Снимок</button>
+      <button id="fill" type="button" ${busy ? "disabled" : ""}>Заполнить пустые</button>
+      <button id="stop" type="button">Стоп</button>
     </div>
     <div id="fields"></div>
     <label>Вписать этот ответ в выбранное поле
       <input id="manual" type="text" value="${escape(answer)}" />
     </label>
-    <button class="act" id="type" type="button">Вписать курсором</button>
-    <pre class="log" id="log">${escape(logLines.join("\n"))}</pre>
+    <button id="type" type="button">Вписать курсором</button>
+    <pre id="log">${escape(logLines.join("\n"))}</pre>
   `);
   const list = document.querySelector("#fields") as HTMLElement;
   for (const field of fields) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "hit" + (picked === field.ref ? " active" : "");
     button.innerHTML = `<strong>${escape(field.ref)}</strong><small>${escape(field.context || "без текста")} · ${field.empty ? "пусто" : escape(field.value)}</small>`;
     button.addEventListener("click", () => {
       picked = field.ref;

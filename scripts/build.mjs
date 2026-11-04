@@ -20,5 +20,4 @@ await esbuild.build({
 
 cpSync("manifest.json", "dist/manifest.json");
 cpSync("sidepanel.html", "dist/sidepanel.html");
-cpSync("sidepanel.css", "dist/sidepanel.css");
 console.log("dist ready");
