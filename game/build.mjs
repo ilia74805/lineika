@@ -12,4 +12,5 @@ await esbuild.build({
   logLevel: "warning",
 });
 cpSync("index.html", "dist/index.html");
+cpSync("assets/game", "dist/assets/game", { recursive: true });
 console.log("game ready");

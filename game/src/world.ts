@@ -1,6 +1,6 @@
 // Мир — сетка блоков. Генерация детерминированная: один и тот же seed даёт один и тот же мир.
 
-export const TS = 16; // размер блока в пикселях
+export const TS = 32; // размер блока в пикселях (как в наборе Denzi)
 export const WORLD_W = 180;
 export const WORLD_H = 60;
 export const AIR = 0;
@@ -40,6 +40,15 @@ export function isSolid(t: Tiles, x: number, y: number): boolean {
 export function topSolid(t: Tiles, x: number): number {
   for (let y = 0; y < WORLD_H; y++) if (isSolid(t, x, y)) return y;
   return WORLD_H;
+}
+
+// Внутренность дома: над землёй, но её нужно закрасить, чтобы не просвечивал фон.
+export function isHouseInterior(tx: number, ty: number): boolean {
+  for (const hx of Object.values(HOUSES)) {
+    const s = surfaceAt(hx);
+    if (tx >= hx + 1 && tx <= hx + 4 && ty >= s - 4 && ty <= s - 1) return true;
+  }
+  return false;
 }
 
 function buildHouse(t: Tiles, x0: number): void {

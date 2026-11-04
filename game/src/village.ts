@@ -1,14 +1,14 @@
 import Phaser from "phaser";
 import { Cards } from "./ui";
 import { AIR, HOUSES, RUINS_X, TS, Tiles, WORLD_H, WORLD_W, generate, idx, isSolid, surfaceAt, topSolid } from "./world";
-import { BOSS_PALETTE, BOSS_ROWS, FISH_PALETTE, FISH_ROWS, HUMAN_PALETTES, HUMAN_ROWS, WorldPainter, drawSkyAndHills, makeSprite } from "./art";
+import { FISH_PALETTE, FISH_ROWS, WorldPainter, drawSkyAndHills, makeSprite } from "./art";
 import { DAY_LENGTH, NIGHT_AT, SpecialistId, NpcId, state } from "./state";
 import { FISH_LINES, FRIEND_HELLO, FRIEND_TELLS, NPC_LINES, NPC_NAMES, SPECIALIST_TELLS } from "./story";
 
-const PW = 10; // ширина героя
-const PH = 20; // высота героя
+const PW = 20; // ширина героя (коллизия)
+const PH = 30; // высота героя (коллизия)
 const REACH = 4 * TS; // радиус, в котором можно копать и ставить блоки
-const TALK_DIST = 48;
+const TALK_DIST = 64;
 const BOSS_HITS = 8;
 
 type Npc = {
@@ -91,8 +91,7 @@ export class Village extends Phaser.Scene {
     const home = HOUSES.home;
     this.px = (home + 2) * TS;
     this.py = surfaceAt(home) * TS - PH;
-    makeSprite(this, "player", HUMAN_ROWS, HUMAN_PALETTES["player"]!);
-    this.player = this.add.image(this.px, this.py, "player").setOrigin(0, 0).setDepth(10);
+    this.player = this.add.image(this.px + PW / 2, this.py + PH, "hero").setOrigin(0.5, 1).setDepth(10);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
 
     // Жители: специалисты и друг
@@ -105,8 +104,7 @@ export class Village extends Phaser.Scene {
     for (const s of specs) {
       const minX = (s.house + 7) * TS;
       const maxX = (s.house + 14) * TS;
-      makeSprite(this, "npc_" + s.id, HUMAN_ROWS, HUMAN_PALETTES[s.id]!);
-      const body = this.add.image(minX, 0, "npc_" + s.id).setOrigin(0, 0).setDepth(9);
+      const body = this.add.image(minX + PW / 2, 0, "npc_" + s.id).setOrigin(0.5, 1).setDepth(9);
       const label = this.add
         .text(0, 0, NPC_NAMES[s.id], { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" })
         .setOrigin(0.5, 1)
@@ -121,9 +119,9 @@ export class Village extends Phaser.Scene {
 
     // Рыбка-поддержка в доме
     this.fishX = (home + 4) * TS;
-    this.fishY = surfaceAt(home) * TS - 8;
+    this.fishY = surfaceAt(home) * TS - 16;
     makeSprite(this, "fish", FISH_ROWS, FISH_PALETTE);
-    this.fish = this.add.image(this.fishX, this.fishY, "fish").setOrigin(0, 0).setDepth(9);
+    this.fish = this.add.image(this.fishX, this.fishY, "fish").setOrigin(0, 0).setScale(2).setDepth(9);
     this.add.text(this.fishX - 4, this.fishY - 12, "Рыбка", { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" }).setDepth(11);
 
     // Интерфейс (не двигается вместе с камерой)
@@ -199,16 +197,17 @@ export class Village extends Phaser.Scene {
 
   private movePlayer(dt: number): void {
     const dir = (this.keys.D.isDown ? 1 : 0) - (this.keys.A.isDown ? 1 : 0);
-    this.vx = dir * 90;
+    this.vx = dir * 130;
     if (this.keys.W.isDown && this.onGround) {
-      this.vy = -230;
+      this.vy = -330;
       this.onGround = false;
     }
-    this.vy = Math.min(this.vy + 600 * dt, 420);
+    this.vy = Math.min(this.vy + 900 * dt, 600);
     this.sweep(this.vx * dt, 0);
     this.onGround = false;
     this.sweep(0, this.vy * dt);
-    this.player.setPosition(this.px, this.py);
+    this.player.setPosition(this.px + PW / 2, this.py + PH);
+    this.player.setFlipX(this.vx < 0);
   }
 
   private inHome(): boolean {
@@ -225,7 +224,7 @@ export class Village extends Phaser.Scene {
   private walkNpcs(dt: number): void {
     for (const npc of this.npcs) {
       if (npc.gone) continue;
-      npc.x += npc.dir * 14 * dt;
+      npc.x += npc.dir * 20 * dt;
       if (npc.x <= npc.minX) {
         npc.x = npc.minX;
         npc.dir = 1;
@@ -241,8 +240,8 @@ export class Village extends Phaser.Scene {
     for (const npc of this.npcs) {
       const tx = Math.floor((npc.x + PW / 2) / TS);
       const groundTop = topSolid(this.tiles, tx) * TS;
-      npc.body.setPosition(npc.x, groundTop - PH);
-      npc.label.setPosition(npc.x + PW / 2, groundTop - PH - 2);
+      npc.body.setPosition(npc.x + PW / 2, groundTop);
+      npc.label.setPosition(npc.x + PW / 2, groundTop - PH - 6);
     }
   }
 
@@ -368,7 +367,7 @@ export class Village extends Phaser.Scene {
     const wy = p.worldY;
 
     if (p.leftButtonDown()) {
-      if (this.boss && Math.hypot(wx - (this.boss.x + 11), wy - (this.boss.y + 12)) < 24) {
+      if (this.boss && Math.hypot(wx - this.boss.x, wy - (this.boss.y - TS / 2)) < 28) {
         this.bossHits++;
         this.updateHint();
         if (this.bossHits >= BOSS_HITS) this.defeatBoss();
@@ -438,9 +437,8 @@ export class Village extends Phaser.Scene {
   private spawnBoss(): void {
     const tx = RUINS_X + 8;
     const top = topSolid(this.tiles, tx) * TS;
-    makeSprite(this, "boss", BOSS_ROWS, BOSS_PALETTE);
-    this.boss = this.add.image(tx * TS, top - 24, "boss").setOrigin(0, 0).setScale(2).setDepth(9);
-    this.add.text(tx * TS, top - 36, "Чудовище", { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" }).setDepth(11);
+    this.boss = this.add.image(tx * TS + TS / 2, top, "boss").setOrigin(0.5, 1).setDepth(9);
+    this.add.text(tx * TS, top - 44, "Чудовище", { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" }).setDepth(11);
     this.cards.show(["Чудовище из легенды. Оно стоит неподвижно и смотрит на тебя."]);
   }
 

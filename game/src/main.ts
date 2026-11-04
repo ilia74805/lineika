@@ -4,6 +4,29 @@ import { ENDINGS, PROLOGUE } from "./story";
 import { resetState, state } from "./state";
 import { Village } from "./village";
 
+// Загрузка картинок один раз, до первого экрана.
+class Boot extends Phaser.Scene {
+  constructor() {
+    super("Boot");
+  }
+
+  preload(): void {
+    this.load.image("tile_stone", "assets/game/tiles/stone.png");
+    this.load.image("tile_dirt", "assets/game/tiles/dirt.png");
+    this.load.image("tile_cave", "assets/game/tiles/cave.png");
+    this.load.image("hero", "assets/game/chars/hero.png");
+    this.load.image("npc_jeweler", "assets/game/chars/jeweler.png");
+    this.load.image("npc_mathematician", "assets/game/chars/mathematician.png");
+    this.load.image("npc_gardener", "assets/game/chars/gardener.png");
+    this.load.image("npc_friend", "assets/game/chars/friend.png");
+    this.load.image("boss", "assets/game/monsters/boss.png");
+  }
+
+  create(): void {
+    this.scene.start("Prologue");
+  }
+}
+
 class Prologue extends Phaser.Scene {
   constructor() {
     super("Prologue");
@@ -38,7 +61,8 @@ const game = new Phaser.Game({
   height: 540,
   backgroundColor: "#000000",
   parent: "game",
-  scene: [Prologue, Village, Ending],
+  pixelArt: true,
+  scene: [Boot, Prologue, Village, Ending],
 });
 
 // Для проверок в браузере: доступ к игре и состоянию из консоли.
