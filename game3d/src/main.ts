@@ -68,7 +68,10 @@ function makeGrassTop(dirtImg: CanvasImageSource): THREE.Texture {
 // Спрайт из текстуры: всегда повёрнут к камере
 function makeSprite(tex: THREE.Texture, size: number): THREE.Sprite {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, alphaTest: 0.5 }));
-  s.scale.set(size, size, 1);
+  // сохраняем пропорции картинки: высота = size, ширина по соотношению сторон
+  const img = tex.image as { width: number; height: number };
+  const aspect = img && img.height ? img.width / img.height : 1;
+  s.scale.set(size * aspect, size, 1);
   scene.add(s);
   return s;
 }
@@ -625,12 +628,12 @@ async function boot(): Promise<void> {
     stone: await pixelTex("assets/game/tiles/stone.png"),
     dirt: grassBase,
     wood: await pixelTex("assets/game/tiles/stone.png"),
-    hero: await pixelTex("assets/game/chars/hero.png"),
-    boss: await pixelTex("assets/game/monsters/boss.png"),
-    npc_jeweler: await pixelTex("assets/game/chars/jeweler.png"),
-    npc_mathematician: await pixelTex("assets/game/chars/mathematician.png"),
-    npc_gardener: await pixelTex("assets/game/chars/gardener.png"),
-    npc_friend: await pixelTex("assets/game/chars/friend.png"),
+    hero: await pixelTex("assets/game/chars2/hero.png"),
+    boss: await pixelTex("assets/game/chars2/boss.png"),
+    npc_jeweler: await pixelTex("assets/game/chars2/jeweler.png"),
+    npc_mathematician: await pixelTex("assets/game/chars2/mathematician.png"),
+    npc_gardener: await pixelTex("assets/game/chars2/gardener.png"),
+    npc_friend: await pixelTex("assets/game/chars2/friend.png"),
   } as Tex;
   T["grass"] = makeGrassTop(grassBase.image as CanvasImageSource);
   // дерево: доски из камня с коричневым оттенком
