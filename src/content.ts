@@ -44,14 +44,20 @@ function nearby(el: HTMLElement) {
   }
   const prev = el.previousElementSibling;
   if (prev?.textContent) bits.push(prev.textContent);
-  const parent = el.parentElement;
-  if (parent && parent !== document.body && parent !== document.documentElement) {
-    const clone = parent.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll("input, textarea, button, select, #lineika-cursor").forEach((node) => node.remove());
+  // Поднимаемся по предкам: задача может быть в соседней ячейке таблицы или в
+  // блоке выше. Берём ближайший блок, где есть текст без полей и кнопок.
+  let node: HTMLElement | null = el.parentElement;
+  for (let level = 0; level < 5 && node && node !== document.body && node !== document.documentElement; level++) {
+    const clone = node.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("input, textarea, button, select, script, style, #lineika-cursor").forEach((n) => n.remove());
     const text = (clone.textContent || "").replace(/\s+/g, " ").trim();
-    if (text && text.length < 280) bits.push(text);
+    if (text.length >= 8 && text.length < 600) {
+      bits.push(text);
+      break;
+    }
+    node = node.parentElement;
   }
-  return [...new Set(bits)].join(" ").replace(/\s+/g, " ").trim().slice(0, 360);
+  return [...new Set(bits)].join(" ").replace(/\s+/g, " ").trim().slice(0, 600);
 }
 
 function isAnswerField(el: HTMLElement) {

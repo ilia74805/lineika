@@ -725,8 +725,10 @@ function tryEquation(q: string): Solution | null {
   if (parts.length >= 2) return trySystem(parts);
   const sides = q.split("=");
   if (sides.length !== 2) return null;
-  const left = sides[0]!.trim();
-  const right = sides[1]!.trim();
+  // Из текста задачи берём только выражения: слова и номера до и после уравнения отбрасываем.
+  const left = sides[0]!.replace(/^.*[а-яё]+/i, "").trim();
+  const right = sides[1]!.replace(/[а-яё].*$/i, "").trim();
+  if (!left || !right) return null;
   const L = prepMath(left);
   const R = prepMath(right);
   if (!L || !R) return null;
