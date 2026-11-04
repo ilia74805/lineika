@@ -1,13 +1,13 @@
 import Phaser from "phaser";
 import { Cards } from "./ui";
 import { AIR, HOUSES, RUINS_X, TS, Tiles, WORLD_H, WORLD_W, generate, idx, isSolid, surfaceAt, topSolid } from "./world";
-import { FISH_PALETTE, FISH_ROWS, WorldPainter, drawSkyAndHills, makeSprite } from "./art";
+import { Cell, FISH_PALETTE, FISH_ROWS, Mask, WorldPainter, buildMask, drawSkyAndHills, makeSprite } from "./art";
 import { DAY_LENGTH, NIGHT_AT, SpecialistId, NpcId, state } from "./state";
 import { FISH_LINES, FRIEND_HELLO, FRIEND_TELLS, NPC_LINES, NPC_NAMES, SPECIALIST_TELLS } from "./story";
 
 const SCALE = 2; // увеличение спрайтов героя и жителей
-const PW = 24; // ширина героя (коллизия)
-const PH = 56; // высота героя (коллизия)
+const PW = 32 * SCALE; // ширина спрайта героя и жителей
+const PH = 32 * SCALE; // высота спрайта героя и жителей
 const REACH = 4 * TS; // радиус, в котором можно копать и ставить блоки
 const TALK_DIST = 64;
 const BOSS_HITS = 8;
@@ -21,6 +21,8 @@ type Npc = {
   body: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
   gone: boolean;
+  y: number; // верх спрайта (ставится по земле)
+  mask: Mask;
 };
 
 export class Village extends Phaser.Scene {
@@ -33,6 +35,8 @@ export class Village extends Phaser.Scene {
   private vx = 0;
   private vy = 0;
   private onGround = false;
+  private facingLeft = false;
+  private mask!: Mask;
   private dirt = 20;
   private npcs: Npc[] = [];
   private fish!: Phaser.GameObjects.Image;
@@ -92,7 +96,8 @@ export class Village extends Phaser.Scene {
     const home = HOUSES.home;
     this.px = (home + 2) * TS;
     this.py = surfaceAt(home) * TS - PH;
-    this.player = this.add.image(this.px + PW / 2, this.py + PH, "hero").setOrigin(0.5, 1).setScale(SCALE).setDepth(10);
+    this.player = this.add.image(this.px, this.py, "hero").setOrigin(0, 0).setScale(SCALE).setDepth(10);
+    this.mask = buildMask(this, "hero", SCALE);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
 
     // Жители: специалисты и друг
@@ -105,13 +110,13 @@ export class Village extends Phaser.Scene {
     for (const s of specs) {
       const minX = (s.house + 7) * TS;
       const maxX = (s.house + 14) * TS;
-      const body = this.add.image(minX + PW / 2, 0, "npc_" + s.id).setOrigin(0.5, 1).setScale(SCALE).setDepth(9);
+      const body = this.add.image(minX, 0, "npc_" + s.id).setOrigin(0, 0).setScale(SCALE).setDepth(9);
       const label = this.add
         .text(0, 0, NPC_NAMES[s.id], { fontFamily: "monospace", fontSize: "10px", color: "#ffffff" })
         .setOrigin(0.5, 1)
         .setDepth(11);
       const gone = state.gone.has(s.id);
-      this.npcs.push({ id: s.id, x: minX, dir: 1, minX, maxX, body, label, gone });
+      this.npcs.push({ id: s.id, x: minX, dir: 1, minX, maxX, body, label, gone, y: 0, mask: buildMask(this, "npc_" + s.id, SCALE) });
       if (gone) {
         body.setVisible(false);
         label.setText(`${NPC_NAMES[s.id]} (ушёл)`);
@@ -163,15 +168,16 @@ export class Village extends Phaser.Scene {
 
   // ---------- мир и движение ----------
 
-  private collides(x: number, y: number): boolean {
-    const x0 = Math.floor(x / TS);
-    const x1 = Math.floor((x + PW - 0.01) / TS);
-    const y0 = Math.floor(y / TS);
-    const y1 = Math.floor((y + PH - 0.01) / TS);
-    for (let ty = y0; ty <= y1; ty++) {
-      for (let tx = x0; tx <= x1; tx++) if (isSolid(this.tiles, tx, ty)) return true;
+  // Точная коллизия: сталкиваемся только клетками, где есть пиксели персонажа.
+  private cellsHit(cells: Cell[], x: number, y: number): boolean {
+    for (const c of cells) {
+      if (isSolid(this.tiles, Math.floor((x + c.x) / TS), Math.floor((y + c.y) / TS))) return true;
     }
     return false;
+  }
+
+  private collides(x: number, y: number): boolean {
+    return this.cellsHit(this.mask.all, x, y);
   }
 
   private sweep(dx: number, dy: number): void {
@@ -198,6 +204,7 @@ export class Village extends Phaser.Scene {
 
   private movePlayer(dt: number): void {
     const dir = (this.keys.D.isDown ? 1 : 0) - (this.keys.A.isDown ? 1 : 0);
+    if (dir !== 0) this.facingLeft = dir < 0;
     this.vx = dir * 130;
     if (this.keys.W.isDown && this.onGround) {
       this.vy = -330;
@@ -207,7 +214,9 @@ export class Village extends Phaser.Scene {
     this.sweep(this.vx * dt, 0);
     this.onGround = false;
     this.sweep(0, this.vy * dt);
-    this.player.setPosition(this.px + PW / 2, this.py + PH);
+    // стоя на земле: позиция строго целая, иначе нижний пиксель заходит в блок пола
+    if (this.onGround) this.py = Math.floor(this.py);
+    this.player.setPosition(this.px, this.py);
     this.player.setFlipX(this.vx < 0);
   }
 
@@ -225,7 +234,13 @@ export class Village extends Phaser.Scene {
   private walkNpcs(dt: number): void {
     for (const npc of this.npcs) {
       if (npc.gone) continue;
-      npc.x += npc.dir * 20 * dt;
+      const cells = npc.mask.all;
+      const nx = npc.x + npc.dir * 20 * dt;
+      if (this.cellsHit(cells, nx, npc.y)) {
+        npc.dir = -npc.dir; // упёрся пикселем в стену — разворот
+        continue;
+      }
+      npc.x = nx;
       if (npc.x <= npc.minX) {
         npc.x = npc.minX;
         npc.dir = 1;
@@ -241,8 +256,9 @@ export class Village extends Phaser.Scene {
     for (const npc of this.npcs) {
       const tx = Math.floor((npc.x + PW / 2) / TS);
       const groundTop = topSolid(this.tiles, tx) * TS;
-      npc.body.setPosition(npc.x + PW / 2, groundTop);
-      npc.label.setPosition(npc.x + PW / 2, groundTop - PH - 6);
+      npc.y = groundTop - PH;
+      npc.body.setPosition(npc.x, npc.y);
+      npc.label.setPosition(npc.x + PW / 2, npc.y - 6);
     }
   }
 
@@ -251,8 +267,7 @@ export class Village extends Phaser.Scene {
     let best: Npc | null = null;
     let bestD = TALK_DIST;
     for (const npc of this.npcs) {
-      const groundTop = topSolid(this.tiles, Math.floor((npc.x + PW / 2) / TS)) * TS;
-      const d = Math.hypot(npc.x + PW / 2 - c.x, groundTop - PH / 2 - c.y);
+      const d = Math.hypot(npc.x + PW / 2 - c.x, npc.y + PH / 2 - c.y);
       if (d < bestD) {
         bestD = d;
         best = npc;

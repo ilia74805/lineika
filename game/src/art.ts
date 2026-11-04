@@ -130,3 +130,36 @@ export const FISH_ROWS: string[] = [
 ].map((r) => r.padEnd(12, "."));
 
 export const FISH_PALETTE = { O: "#ffa34d", E: "#222222" };
+
+// Точная коллизия: клетки, где в спрайте есть непрозрачный пиксель (с учётом масштаба).
+// right — как нарисовано; left — отражённый вариант.
+export type Cell = { x: number; y: number };
+
+export type Mask = { right: Cell[]; left: Cell[]; all: Cell[] };
+
+export function buildMask(scene: Phaser.Scene, key: string, scale: number): Mask {
+  const src = scene.textures.get(key).getSourceImage() as HTMLImageElement;
+  const w = src.width;
+  const h = src.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(src, 0, 0);
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const right: Cell[] = [];
+  const left: Cell[] = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3]! === 0) continue;
+      for (let sy = 0; sy < scale; sy++) {
+        for (let sx = 0; sx < scale; sx++) {
+          right.push({ x: x * scale + sx, y: y * scale + sy });
+          left.push({ x: (w - 1 - x) * scale + sx, y: y * scale + sy });
+        }
+      }
+    }
+  }
+  // all — объединение обоих направлений: поворот спрайта не меняет коллизию
+  return { right, left, all: [...right, ...left] };
+}
