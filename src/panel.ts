@@ -299,6 +299,60 @@ function paintBooks() {
   }
 }
 
+let stopRequested = false;
+
+// Курсор: правила, а если они не справились — локальная модель. Вписывает курсором.
+async function runAgent() {
+  busy = true;
+  stopRequested = false;
+  paint();
+  let useModel = true;
+  let written = 0;
+  try {
+    await runSnap();
+    const todo = fields.filter((f) => f.empty && f.context.length >= 8 && /\d|=|найд|реши|вычисл|сколько/i.test(f.context));
+    pushLog(`заданий на странице: ${todo.length}`);
+    for (const field of todo.slice(0, 10)) {
+      if (stopRequested) {
+        pushLog("остановлено");
+        break;
+      }
+      // Длинные условия правила понимают плохо: правило «скорость» поделило бы
+      // любые два числа в тексте. Для них сразу спрашиваем модель.
+      let text = "";
+      if (field.context.length <= 120) {
+        const local = solve(field.context, LESSONS);
+        if (local.ok && !local.lessonId && local.answer && local.answer.length <= 80) text = local.answer;
+      }
+      let via = "правила";
+      if (!text && useModel) {
+        pushLog(`${field.ref} — спрашиваю модель`);
+        try {
+          const reply = await askModel(field.context);
+          text = (reply.match(/Ответ:\s*(.+)$/m)?.[1] ?? "").trim().slice(0, 80);
+          via = "модель";
+        } catch (err) {
+          pushLog(err instanceof Error ? err.message : "модель недоступна");
+          useModel = false;
+        }
+      }
+      if (!text) {
+        pushLog(`${field.ref} — ответа нет, пропускаю`);
+        continue;
+      }
+      pushLog(`${field.ref} — ${via}: ${text}`);
+      const reply = await page<{ ok: boolean; error?: string }>({ type: "type", ref: field.ref, text });
+      if (reply.ok) written += 1;
+      pushLog(reply.ok ? `${field.ref} — вписано` : reply.error || "не вписалось");
+    }
+    pushLog(`готово, вписано: ${written}`);
+  } catch (err) {
+    pushLog(err instanceof Error ? err.message : "нет связи со страницей");
+  }
+  busy = false;
+  await runSnap();
+}
+
 function paintCursor() {
   h(`
     <p>Курсор едет по открытой вкладке и печатает в поля. Пустое поле берёт, только если рядом виден текст задачи.</p>
@@ -332,19 +386,10 @@ function paintCursor() {
     await runSnap();
   });
   document.querySelector("#fill")?.addEventListener("click", async () => {
-    busy = true;
-    paint();
-    pushLog("еду по пустым полям");
-    try {
-      const reply = await page<{ ok: boolean; filled?: number; error?: string }>({ type: "fill", onlyEmpty: true });
-      pushLog(reply.ok ? `готово, полей: ${reply.filled ?? 0}` : reply.error || "не вышло");
-    } catch (err) {
-      pushLog(err instanceof Error ? err.message : "нет связи со страницей");
-    }
-    busy = false;
-    await runSnap();
+    await runAgent();
   });
   document.querySelector("#stop")?.addEventListener("click", () => {
+    stopRequested = true;
     page({ type: "stop" }).catch(() => {});
     pushLog("стоп");
   });
